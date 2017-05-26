@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset=utf-8>
+	<title>Mastogram</title>
+	<script src="libodon.js"></script>
+	<style>
+	* {
+		margin: 0;
+		padding: 0;
+		box-sizing: border-box;
+	}
+	a {
+		text-decoration: none;
+	}
+	a:hover {
+		text-decoration: underline;
+	}
+	body {
+		display: flex;
+		align-items: flex-start;
+		justify-content: center;
+		font-family: sans-serif;
+	}
+	.timeline {
+		display: flex;
+		flex-direction: column;
+		padding: 1rem;
+		align-content: center;
+	}
+	.timeline > * {
+		margin-bottom: 2rem;
+		margin-right: 3rem;
+	}
+	.timeline #loadmore {
+		order: 1;
+	}
+	.post {
+		width: 30em;
+		min-height: 4em;
+		border: 1px solid #ccc;
+		border-radius: 0 0 .5rem .5rem;
+		background-color: white;
+		position: relative;
+	}
+	.post .media {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-wrap: wrap;
+		max-height: 40em;
+		border-bottom: 1px solid #ccc;
+	}
+	.media img {
+		max-width: 50%;
+		max-height: 20rem;
+	}
+	.media img:first-of-type:last-of-type {
+		max-width: 30rem;
+		max-height: 40rem;
+	}
+	.media img:first-of-type:nth-last-of-type(2),
+	.media img:nth-of-type(2):last-of-type {
+		max-height: 50rem;
+	}
+	.media img:first-of-type:nth-last-of-type(3){
+		max-width: 30rem;
+		max-height: calc(0.66*40rem);
+	}
+	.media img:nth-of-type(2):nth-last-of-type(2),
+	.media img:nth-of-type(3):last-of-type{
+		max-height: calc(0.34*40rem);
+	}
+	.post .secondary {
+		padding: .5em .5em .5em 4em;
+		position: relative;
+		min-height: 4em;
+	}
+	.post .secondary .profile_picture {
+		position: absolute;
+		top: .5em;
+		left: .5em;
+		max-width: 3em;
+		max-height: 3em;
+		border-radius: .25em;
+	}
+	.repost {
+		width: 30em;
+		padding: 0;
+		background-color: #ccc;
+		border-radius: .5em;
+	}
+
+	.repost .reposted_by {
+		margin: 0 .5em;
+		font-size: .8em;
+
+	}
+	form#login {
+		margin: 2rem;
+		font-size: 2rem;
+		display: flex;
+		flex-direction: column;
+	}
+
+	button#loadmore {
+		width: 30rem;
+		height: 3rem;
+		font-size: 1.2rem;
+	}
+
+	aside#logged-in-as {
+		position: fixed;
+		top: 0px;
+		left: 0px;
+		padding: .5em 1em;
+		background: #9c4;
+		border-bottom-right-radius: .5rem;
+	}
+	aside#logged-in-as a {
+		color: blue;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+	</style>
+</head>
+<body>
+<form id=login onsubmit="login(this);return false;">
+	<label>
+		Instance: <input name=url>
+	</label>
+	<input type="submit">
+</form>
+<section id=timeline-home class=timeline style="display:none;">
+	<button id=loadmore disabled>More</button>
+</section>
+<aside id=logged-in-as style="display:none;">
+	<p>Logged in as <a id="username"></a></p>
+	<a id=logout onclick="logout()">Log out</a> |
+	<a id=forget onclick="forget()">Forget me</a>
+</aside>
+<template id=post-template>
+	<article class=post>
+		<div class=media>
+			<template data-tmpl="#foreach:image">
+				<img data-tmpl="src:src"></img>
+			</template>
+		</div>
+		<div class=secondary>
+			<header>
+				<a>
+					<span data-tmpl="textContent:profile"></span>
+					<img class=profile_picture data-tmpl="src:profile_picture"></img>
+				</a>
+			</header>
+			<p class=text data-tmpl="innerHTML:text">
+				
+			</p>
+			</content>
+	</article>
+</template>
+<script>
+	if(location.hash=='#clear') localStorage.clear()
+	const instance = localStorage.getItem('mastogram_instance')
+	let earliest_post = NaN
+	if(instance) connect(instance)
+	function forget(){
+		localStorage.clear()
+		location.reload()
+	}
+	function logout(){
+		localStorage.removeItem('mastogram_instance')
+		location.reload()
+	}
+	function login(form){
+		let url = form.querySelector('input[name=url]').value;
+		if(url.substring(0, 4) != 'http'){
+			url = 'https://'+url
+		}
+		return connect(url)
+	}
+	function connect(url){
+		let return_link;
+		if(location.protocol=='http:' || location.protocol=='https:'){
+			return_link = location.origin+location.pathname;
+		} else {
+			return_link = 'urn:ietf:wg:oauth:2.0:oob'
+		}
+		const app = new Libodon('Mastogram',return_link)
+		const connection = app.connect(url,'#timeline-home')
+		connection.then(conn=>{
+			localStorage.setItem('mastogram_instance',url)
+			if(conn.result=='redirect'){
+				if(return_link=='urn:ietf:wg:oauth:2.0:oob'){
+					const a = document.createElement('a')
+					a.href = conn.target
+					a.textContent = conn.target
+					document.body.appendChild(a)
+				} else {
+					location = conn.target
+				}
+			} else if(conn.result=='success'){
+				history.replaceState(history.state, 'Mastogram', location.pathname)
+				const form = document.querySelector('#login')
+				form.style.display = 'none'
+				const timeline = document.querySelector('#timeline-home')
+				timeline.style.display = ''
+				app.account_self().then(res=>{
+					const aside = document.querySelector('#logged-in-as')
+					const name = aside.querySelector('#username')
+					name.textContent = res.display_name
+					name.href = res.url
+					aside.style.display = ''
+				})
+				
+			}
+		})
+		app.timeline('home',{limit:40}).then(show_timeline('timeline-home'))
+		.then(()=>{
+			const button = document.querySelector('#loadmore')
+			button.removeAttribute('disabled')
+			button.onclick = function(){
+				const earliest_post_loaded = earliest_post
+				this.setAttribute('disabled','');
+				app.timeline('home',{limit:40,max_id:earliest_post})
+				.then(show_timeline('timeline-home'))
+				.then(()=>{
+					if(earliest_post_loaded == earliest_post){
+						this.textContent = 'No More'
+					} else this.removeAttribute('disabled')
+				})
+			}
+		})
+	}
+	function show_timeline(timeline_id){
+		return timeline => {
+			if(timeline.length){
+				earliest_post = timeline[timeline.length-1].id
+			}
+			let posts = 0, posts_shown = 0;
+			const parent = document.getElementById(timeline_id)
+			if(!parent) return
+			for(let i=0;i<timeline.length;i++){
+				let post;
+				posts++
+				if(timeline[i].reblog){
+					post = build_repost(timeline[i])
+				} else {
+					post = build_post(timeline[i])
+				}
+				if(post){
+					posts_shown++;
+					parent.appendChild(post)
+				}
+				if(posts_shown==10) break;
+			}
+		}
+	}
+	function fill_tmpl(parent, data){
+		if(parent.dataset && parent.dataset.tmpl){
+			fill_elem(parent, data)
+		}
+		for(let elem of parent.querySelectorAll("[data-tmpl]")){
+			fill_elem(elem, data)
+		}
+	}
+	function fill_elem(elem, data){
+		const inst = elem.dataset.tmpl.split(':')
+		if(inst[0]=='#foreach' && Array.isArray(data[inst[1]])){
+			for(let item of data[inst[1]]){
+				let item_elem = document.importNode(elem.content, true).children[0]
+				elem.parentNode.insertBefore(item_elem, elem)
+				fill_tmpl(item_elem, item)
+			}
+		} else if(data[inst[1]]){
+			elem[inst[0]] = data[inst[1]]
+		}
+	}
+	function build_post(resource){
+		if(!resource.media_attachments || resource.media_attachments.length==0) return;
+
+		const data = {
+			profile: '',
+			profile_picture: resource.account.avatar,
+			text: resource.content,
+			image: []
+		}
+		if(resource.account.display_name) data.profile = resource.account.display_name+' '
+		data.profile += '@'+resource.account.acct
+		for(let media of resource.media_attachments){
+			let image_added = false
+			if(media.type == 'image'){
+				data.image.push({
+					src: media.url
+				})
+				image_added = true;
+			}
+			if(!image_added) return;
+		}
+
+		const tmpl = document.querySelector('#post-template')
+		const post = document.importNode(tmpl.content, true)
+
+		fill_tmpl(post, data)
+		return post
+	}
+	function build_repost(resource){
+		var post = build_post(resource.reblog)
+		if(!post) return;
+		const div = document.createElement('div')
+		div.classList.add('repost')
+		const header = document.createElement('div')
+		header.appendChild(document.createTextNode('reposted by '+resource.account.display_name))
+		header.classList.add('reposted_by')
+		div.appendChild(header)
+		div.appendChild(post)
+		return div
+	}
+</script>
+</body>
+</html>
