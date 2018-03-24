@@ -186,7 +186,9 @@
 		} else {
 			return_link = 'urn:ietf:wg:oauth:2.0:oob'
 		}
-		const app = new Libodon('Mastogram',return_link)
+		const app = new Libodon('Mastogram',return_link,'read write follow')
+		app.use_errorlog()
+		app.use_actionlog()
 		const connection = app.connect(url,'#timeline-home')
 		connection.then(conn=>{
 			localStorage.setItem('mastogram_instance',url)
